@@ -5,6 +5,7 @@ import PlacementTest from "./pages/PlacementTest";
 import Training from "./pages/Training";
 import Dashboard from "./pages/Dashboard";
 import Conversation from "./pages/Conversation";
+import DailyTest from "./pages/DailyTest";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/training" element={<Training />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/conversation" element={<Conversation />} />
+          <Route path="/daily-test" element={<DailyTest />} />
         </Routes>
       </div>
     </Router>

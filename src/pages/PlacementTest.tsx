@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
 import { Send, Bot, User } from "lucide-react";
-import { createPlacementTestChat } from "../lib/gemini";
+import { processPlacementTestTurn } from "../lib/gemini";
 import { storage } from "../lib/storage";
 
 interface Message {
@@ -13,22 +13,16 @@ interface Message {
 
 export default function PlacementTest() {
   const navigate = useNavigate();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: "1",
+      role: "ai",
+      content: "Hi! I'm here to evaluate your English. Let's start with a simple question: What do you enjoy doing in your free time?",
+    },
+  ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const chatRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    chatRef.current = createPlacementTestChat();
-    setMessages([
-      {
-        id: "1",
-        role: "ai",
-        content: "Hi! I'm here to evaluate your English. Let's start with a simple question: What do you enjoy doing in your free time?",
-      },
-    ]);
-  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -39,12 +33,19 @@ export default function PlacementTest() {
 
     const userMsg = input.trim();
     setInput("");
-    setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content: userMsg }]);
+    
+    const newUserMsg: Message = { id: Date.now().toString(), role: "user", content: userMsg };
+    const newMessages = [...messages, newUserMsg];
+    setMessages(newMessages);
     setIsLoading(true);
 
     try {
-      const response = await chatRef.current.sendMessage({ message: userMsg });
-      const aiResponse = response.text || "";
+      const history = messages.map(m => ({
+        role: m.role === "ai" ? "model" : "user",
+        parts: [{ text: m.content }]
+      }));
+
+      const aiResponse = await processPlacementTestTurn(userMsg, history);
       
       try {
         // Check if the response is JSON (meaning the test is over)

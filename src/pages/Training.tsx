@@ -8,7 +8,7 @@ export default function Training() {
   const [sentence, setSentence] = useState("I usually wake up at 7 AM.");
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [feedback, setFeedback] = useState<{ score: number; text: string; mistakes?: any[] } | null>(null);
+  const [feedback, setFeedback] = useState<{ score: number; text: string; mistakes?: any[]; suggested_vocabulary?: { word: string; meaning: string } } | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -91,8 +91,19 @@ export default function Training() {
             score: result.score,
             text: result.feedback,
             mistakes: result.mistakes,
+            suggested_vocabulary: result.suggested_vocabulary,
           });
+          
+          if (result.suggested_vocabulary) {
+            import("../lib/storage").then(({ storage }) => {
+              storage.addVocabulary(result.suggested_vocabulary!.word, result.suggested_vocabulary!.meaning);
+            });
+          }
+
           if (result.score > 80) {
+            import("../lib/storage").then(({ storage }) => {
+              storage.updateProgress(5);
+            });
             setProgress((prev) => Math.min(prev + 20, 100));
           }
         } else {
@@ -145,6 +156,7 @@ export default function Training() {
             onClick={handleListen}
             disabled={isPlaying || isRecording || isAnalyzing}
             className="w-16 h-16 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-indigo-400 transition-colors disabled:opacity-50"
+            title="Listen to pronunciation"
           >
             <Volume2 size={28} />
           </button>
@@ -157,6 +169,7 @@ export default function Training() {
                 ? "bg-rose-500 hover:bg-rose-600 animate-pulse shadow-rose-500/50"
                 : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/30"
             } disabled:opacity-50`}
+            title={isRecording ? "Stop recording" : "Start recording"}
           >
             {isRecording ? <Square size={32} fill="currentColor" /> : <Mic size={40} />}
           </button>
@@ -164,14 +177,19 @@ export default function Training() {
           <button
             onClick={() => loadNextSentence(level, sentence)}
             disabled={isRecording || isAnalyzing}
-            className="w-16 h-16 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 transition-colors disabled:opacity-50"
+            className={`w-16 h-16 rounded-full flex items-center justify-center transition-all disabled:opacity-50 ${
+              feedback
+                ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)] animate-bounce"
+                : "bg-slate-800 hover:bg-slate-700 text-slate-400"
+            }`}
+            title="Next sentence"
           >
             <ArrowRight size={28} />
           </button>
         </div>
 
         {/* Feedback Area */}
-        <div className="w-full max-w-xl min-h-[120px]">
+        <div className="w-full max-w-xl min-h-[120px] pb-10">
           {isAnalyzing && (
             <div className="flex items-center justify-center gap-3 text-indigo-400">
               <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
@@ -195,7 +213,7 @@ export default function Training() {
                 ) : (
                   <XCircle className="text-rose-400 shrink-0 mt-1" size={24} />
                 )}
-                <div>
+                <div className="w-full">
                   <h4 className="font-semibold text-lg mb-1">
                     {feedback.score > 80 ? "Great pronunciation!" : "Needs a little work"}
                     <span className="ml-2 text-sm opacity-70">Score: {feedback.score}/100</span>
@@ -203,7 +221,7 @@ export default function Training() {
                   <p className="opacity-90 mb-3">{feedback.text}</p>
                   
                   {feedback.mistakes && feedback.mistakes.length > 0 && (
-                    <div className="bg-black/20 rounded-lg p-3">
+                    <div className="bg-black/20 rounded-lg p-3 mb-3">
                       <p className="text-sm font-medium mb-2 opacity-80">Try again with these words:</p>
                       <ul className="space-y-1">
                         {feedback.mistakes.map((m, i) => (
@@ -216,6 +234,27 @@ export default function Training() {
                       </ul>
                     </div>
                   )}
+
+                  {/* @ts-ignore - suggested_vocabulary is added dynamically */}
+                  {feedback.suggested_vocabulary && (
+                    <div className="bg-indigo-900/30 border border-indigo-500/30 rounded-lg p-3 mt-2 mb-4">
+                      <p className="text-xs font-medium text-indigo-300 uppercase tracking-wider mb-1">New Word Added</p>
+                      <p className="text-sm">
+                        {/* @ts-ignore */}
+                        <span className="font-bold text-indigo-100">{feedback.suggested_vocabulary.word}</span>
+                        <span className="opacity-70 mx-2">—</span>
+                        {/* @ts-ignore */}
+                        <span className="text-indigo-200">{feedback.suggested_vocabulary.meaning}</span>
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => loadNextSentence(level, sentence)}
+                    className="mt-4 w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center justify-center gap-2 transition-colors"
+                  >
+                    Go to Next Sentence <ArrowRight size={18} />
+                  </button>
                 </div>
               </div>
             </motion.div>

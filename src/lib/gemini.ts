@@ -37,7 +37,7 @@ export async function evaluatePronunciation(
   expectedSentence: string,
   audioBase64: string,
   mimeType: string
-): Promise<{ score: number; feedback: string; mistakes?: { word: string; expected_pronunciation: string }[] } | null> {
+): Promise<{ score: number; feedback: string; mistakes?: { word: string; expected_pronunciation: string }[]; suggested_vocabulary?: { word: string; meaning: string } } | null> {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -45,7 +45,7 @@ export async function evaluatePronunciation(
         {
           parts: [
             { inlineData: { data: audioBase64, mimeType } },
-            { text: `The user was supposed to say: "${expectedSentence}". Evaluate their pronunciation and fluency. Be encouraging. Score from 0 to 100. If there are specific words they mispronounced, list them with their IPA pronunciation.` },
+            { text: `The user was supposed to say: "${expectedSentence}". Evaluate their pronunciation and fluency. Be encouraging. Score from 0 to 100. If there are specific words they mispronounced, list them with their IPA pronunciation. Also, pick one useful or challenging word from the sentence and provide its meaning as 'suggested_vocabulary'.` },
           ],
         },
       ],
@@ -67,6 +67,14 @@ export async function evaluatePronunciation(
                 required: ["word", "expected_pronunciation"],
               },
             },
+            suggested_vocabulary: {
+              type: Type.OBJECT,
+              properties: {
+                word: { type: Type.STRING },
+                meaning: { type: Type.STRING }
+              },
+              required: ["word", "meaning"]
+            }
           },
           required: ["score", "feedback"],
         },
@@ -82,11 +90,19 @@ export async function evaluatePronunciation(
   }
 }
 
-export function createPlacementTestChat() {
-  return ai.chats.create({
-    model: "gemini-3-flash-preview",
-    config: {
-      systemInstruction: `You are an expert English evaluator. Your goal is to determine the user's English level (A1-C1) and create a study plan.
+export async function processPlacementTestTurn(
+  text: string,
+  history: { role: string; parts: { text: string }[] }[]
+) {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        ...history,
+        { role: "user", parts: [{ text }] }
+      ],
+      config: {
+        systemInstruction: `You are an expert English evaluator. Your goal is to determine the user's English level (A1-C1) and create a study plan.
 1. Ask 3 progressive questions, one at a time, to test their vocabulary and grammar.
 2. Start by saying: "Hi! I'm here to evaluate your English. Let's start with a simple question: What do you enjoy doing in your free time?"
 3. After they answer the 3rd question, you MUST output ONLY a JSON object evaluating their level. Do not output any conversational text after the 3rd answer, ONLY JSON.
@@ -97,21 +113,69 @@ JSON Format:
   "feedback": "You have a good grasp of basic grammar, but struggle with complex tenses.",
   "plan": ["Master present perfect tense", "Expand vocabulary related to work", "Practice listening to native speakers"]
 }`,
-    },
-  });
+      }
+    });
+
+    return response.text || "I didn't quite catch that. Could you repeat?";
+  } catch (error) {
+    console.error("Error in placement test:", error);
+    throw error;
+  }
 }
 
 export async function generateTrainingSentence(level: string, previousSentence?: string): Promise<string> {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Generate a single English sentence for a user at the ${level} level to practice speaking.
+      contents: `Generate a single English sentence for a user at the CEFR ${level} level to practice speaking.
+      Strictly follow these difficulty guidelines:
+      - A1: Very simple, 4-6 words. Basic vocabulary. (e.g., "I like apples.")
+      - A2: Simple, 6-8 words. Everyday topics. (e.g., "She goes to the park every day.")
+      - B1: Intermediate, 8-12 words. Compound sentences.
+      - B2: Upper intermediate, 12-15 words. Complex grammar, phrasal verbs.
+      - C1: Advanced, 15+ words. Idioms, sophisticated vocabulary, abstract concepts.
+      
       ${previousSentence ? `The previous sentence was: "${previousSentence}". Generate a different one.` : ""}
       Only output the sentence, nothing else. No quotes.`,
     });
     return response.text?.trim() || "I usually wake up at 7 AM.";
   } catch (error) {
     return "I usually wake up at 7 AM.";
+  }
+}
+
+export async function generateDailyTest(level: string) {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Generate a 3-question multiple choice English test for a ${level} level student. Cover grammar and vocabulary.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              question: { type: Type.STRING },
+              options: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              correctAnswer: { type: Type.STRING, description: "Must exactly match one of the options" },
+              explanation: { type: Type.STRING }
+            },
+            required: ["question", "options", "correctAnswer", "explanation"]
+          }
+        }
+      }
+    });
+    
+    const jsonStr = response.text?.trim();
+    if (jsonStr) return JSON.parse(jsonStr);
+    return [];
+  } catch (error) {
+    console.error("Error generating test:", error);
+    return [];
   }
 }
 
