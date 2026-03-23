@@ -1,0 +1,5 @@
+{
+  "name": "EchoCoach AI",
+  "description": "An interactive English speaking coach to improve speaking, listening, pronunciation, and fluency.",
+  "requestFramePermissions": ["microphone"]
+}
